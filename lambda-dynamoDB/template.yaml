@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: |
+  apigateway-lambda-sample
+Globals:
+  Function:
+    Timeout: 3
+    Tracing: Active
+  Api:
+    TracingEnabled: true
+    
+Resources:
+
+#dynamoDBの定義 
+  InputTestTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: 'apigateway-lambda-table'
+      AttributeDefinitions:
+        - AttributeName: 'Id'
+          AttributeType: 'S'
+      KeySchema:
+        - AttributeName: 'Id'
+          KeyType: 'HASH'
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  #api gatewayの定義
+  InputApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      EndpointConfiguration: REGIONAL
+      
+  #lambdaの定義 
+  InputFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src
+      Handler: input-test.lambda_handler
+      Runtime: python3.9
+      
+      MemorySize: 512
+      Timeout: 300
+
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: ${InputTestTable}
+      
+      Events:
+        InputFunctionEvent:
+          Type: Api
+          Properties:
+            Path: /input
+            Method: GET
+            RestApiId: !Ref InputApi
+            
+      Environment:
+        Variables:
+          CHATMESSAGETABLE_TABLE_NAME: ${InputTestTable}
+          CHATMESSAGETABLE_TABLE_ARN:  ${InputTestTable.Arn}
+            
+Outputs:
+  InputApiEndpoint:
+    Description: API Gateway Endpoint URL
+    Value: !Sub "https://${InputApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/input"
