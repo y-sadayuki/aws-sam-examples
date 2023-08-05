@@ -12,19 +12,62 @@ Globals:
     
 Resources:
 
+  #DynamoDBの定義 
+  DynamDbTestTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: 'DynamoDBTestTable'
+      AttributeDefinitions:
+        - AttributeName: 'Id'
+          AttributeType: 'S'
+      KeySchema:
+        - AttributeName: 'Id'
+          KeyType: 'HASH'
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
   #api gatewayの定義
-  InputApi:
+  ApiDynamoTest:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
       EndpointConfiguration: REGIONAL
 
   #lambdaの定義 
-  InputFunction:
+  LambdaFuntionGet:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: ./src
-      Handler: input-test.lambda_handler
+      Handler: get.lambda_handler
+      Runtime: python3.9
+      
+      MemorySize: 512
+      Timeout: 300
+
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DynamDbTestTable
+
+      Events:
+        InputFunctionEvent:
+          Type: Api
+          Properties:
+            Path: /put
+            Method: POST
+            RestApiId: !Ref ApiDynamoTest
+
+      Environment:
+        Variables:
+          TEST_TABLE_NAME: !Ref DynamDbTestTable
+          ALLOWED_IPS: "192.168.1.1,xxx.xxx.xxx.xxx"
+
+  #lambdaの定義 
+  LambdaFuntionPut:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src
+      Handler: put.lambda_handler
       Runtime: python3.9
       
       MemorySize: 512
@@ -34,16 +77,20 @@ Resources:
         InputFunctionEvent:
           Type: Api
           Properties:
-            Path: /input
+            Path: /get
             Method: GET
-            RestApiId: !Ref InputApi
+            RestApiId: !Ref ApiDynamoTest
 
       #IP制限
       Environment:
         Variables:
+          TEST_TABLE_NAME: !Ref DynamDbTestTable
           ALLOWED_IPS: "192.168.1.1,xxx.xxx.xxx.xxx"
 
 Outputs:
-  InputApiEndpoint:
+  GetApiEndpoint:
     Description: API Gateway Endpoint URL
-    Value: !Sub "https://${InputApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/input"
+    Value: !Sub "https://${ApiDynamoTest}.execute-api.${AWS::Region}.amazonaws.com/Prod/get"
+  PutApiEndpoint:
+    Description: API Gateway Endpoint URL
+    Value: !Sub "https://${ApiDynamoTest}.execute-api.${AWS::Region}.amazonaws.com/Prod/get"
