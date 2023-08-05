@@ -1,11 +1,8 @@
 version = 0.1
-[default]
-[default.deploy]
 [default.deploy.parameters]
 stack_name = "apigateway-lambda-sample"
-s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1qtpoju5xbkj1"
+resolve_s3 = true
 s3_prefix = "apigateway-lambda-sample"
 region = "ap-northeast-1"
 capabilities = "CAPABILITY_IAM"
 image_repositories = []
-resolve_s3 = true
