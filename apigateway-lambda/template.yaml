@@ -3,13 +3,18 @@ Transform: AWS::Serverless-2016-10-31
 
 Description: |
   apigateway-lambda-sample
+
+#共通パラメータ
 Globals:
   Function:
-    Timeout: 3
+    Runtime: python3.9
+    MemorySize: 512
+    Timeout: 10
     Tracing: Active
   Api:
     TracingEnabled: true
-    
+
+#リソース定義   
 Resources:
 
   #api gatewayの定義

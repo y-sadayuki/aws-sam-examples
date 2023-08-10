@@ -1,96 +1,95 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
+#テンプレートの説明
 Description: |
   apigateway-lambda-sample
+
+#共通パラメータ
 Globals:
   Function:
-    Timeout: 3
+    Runtime: python3.9
+    MemorySize: 512
+    Timeout: 10
     Tracing: Active
   Api:
     TracingEnabled: true
-    
+
+#リソースの説明
 Resources:
-
-  #DynamoDBの定義 
-  DynamDbTestTable:
-    Type: 'AWS::DynamoDB::Table'
+  LambdaDataSource:
+    Type: 'AWS::AppSync::DataSource'
     Properties:
-      TableName: 'DynamoDBTestTable'
-      AttributeDefinitions:
-        - AttributeName: 'Id'
-          AttributeType: 'S'
-      KeySchema:
-        - AttributeName: 'Id'
-          KeyType: 'HASH'
-      ProvisionedThroughput:
-        ReadCapacityUnits: 5
-        WriteCapacityUnits: 5
+      ApiId: !GetAtt AppSyncApi.ApiId
+      Name: 'LambdaDataSource'
+      Type: 'AWS_LAMBDA'
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt LambdaFunction.Arn
 
-  #api gatewayの定義
-  ApiDynamoTest:
-    Type: AWS::Serverless::Api
+  PipelineResolver:
+    Type: 'AWS::AppSync::Resolver'
     Properties:
-      StageName: Prod
-      EndpointConfiguration: REGIONAL
+      ApiId: !GetAtt AppSyncApi.ApiId
+      DataSourceName: !GetAtt LambdaDataSource.Name
+      FieldName: 'pipelineResolver'
+      Kind: 'PIPELINE'
+      PipelineConfig:
+        Functions:
+          - !GetAtt LambdaFunction.Arn
+          - !Ref AnotherResolver # 別のリゾルバを指定
 
-  #lambdaの定義 
-  LambdaFuntionGet:
-    Type: AWS::Serverless::Function
+  LambdaFunction:
+    Type: 'AWS::Lambda::Function'
     Properties:
-      CodeUri: ./src
-      Handler: get.lambda_handler
-      Runtime: python3.9
-      
-      MemorySize: 512
-      Timeout: 300
+      FunctionName: 'MyPipelineLambda'
+      Handler: 'index.handler'
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: 'your-code-bucket'
+        S3Key: 'lambda-code.zip'
 
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'LambdaExecutionRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'lambda.amazonaws.com'
+            Action: 'sts:AssumeRole'
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref DynamDbTestTable
+        - PolicyName: 'LambdaExecutionPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
 
-      Events:
-        InputFunctionEvent:
-          Type: Api
-          Properties:
-            Path: /put
-            Method: POST
-            RestApiId: !Ref ApiDynamoTest
-
-      Environment:
-        Variables:
-          TEST_TABLE_NAME: !Ref DynamDbTestTable
-          ALLOWED_IPS: "192.168.1.1,xxx.xxx.xxx.xxx"
-
-  #lambdaの定義 
-  LambdaFuntionPut:
-    Type: AWS::Serverless::Function
+  AppSyncApi:
+    Type: 'AWS::AppSync::GraphQLApi'
     Properties:
-      CodeUri: ./src
-      Handler: put.lambda_handler
-      Runtime: python3.9
-      
-      MemorySize: 512
-      Timeout: 300
+      Name: 'MyAppSyncApi'
+      AuthenticationType: 'API_KEY'
 
-      Events:
-        InputFunctionEvent:
-          Type: Api
-          Properties:
-            Path: /get
-            Method: GET
-            RestApiId: !Ref ApiDynamoTest
+  AnotherResolver:
+    Type: 'AWS::AppSync::Resolver'
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      TypeName: 'Query'
+      FieldName: 'anotherResolver'
+      DataSourceName: 'AnotherDataSource'
+      RequestMappingTemplate: '{ "version": "2018-05-29", "payload": {} }'
+      ResponseMappingTemplate: '$util.toJson($ctx.result)'
 
-      #IP制限
-      Environment:
-        Variables:
-          TEST_TABLE_NAME: !Ref DynamDbTestTable
-          ALLOWED_IPS: "192.168.1.1,xxx.xxx.xxx.xxx"
-
-Outputs:
-  GetApiEndpoint:
-    Description: API Gateway Endpoint URL
-    Value: !Sub "https://${ApiDynamoTest}.execute-api.${AWS::Region}.amazonaws.com/Prod/get"
-  PutApiEndpoint:
-    Description: API Gateway Endpoint URL
-    Value: !Sub "https://${ApiDynamoTest}.execute-api.${AWS::Region}.amazonaws.com/Prod/get"
+  AnotherDataSource:
+    Type: 'AWS::AppSync::DataSource'
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      Name: 'AnotherDataSource'
+      Type: 'NONE' # 他のデータソースとの結合などを想定
