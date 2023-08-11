@@ -23,12 +23,38 @@ Resources:
     Properties:
       Name: 'AppSync Sam Template Test'
       AuthenticationType: API_KEY
-  
+
   #API-KEYの定義
   ApiKeyAppSync:
     Type: AWS::AppSync::ApiKey
     Properties:
       ApiId: !GetAtt AppSyncApi.ApiId
+
+  # スキーマ定義
+  SchemaMyApp:
+    Type: AWS::AppSync::GraphQLSchema
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      Definition: >
+        schema {
+          query: Query
+          mutation: Mutation
+        }
+
+        type Query {
+          getItem(id: ID!): Item
+          transformItem(id: ID!): Item
+        }
+
+        type Mutation {
+          addItem(hogetext: String!): Item
+        }
+
+        type Item {
+          id: ID!
+          hogetext: String
+        }
+  
 
   # DynamoDBのテーブルを作成
   MyDynamoDBTable:
@@ -80,6 +106,19 @@ Resources:
       ResponseMappingTemplate: |
         $util.toJson($ctx.result)
 
+  MyPipelineResolver:
+    Type: 'AWS::AppSync::Resolver'
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      TypeName: Query
+      FieldName: transformItem
+      Kind: PIPELINE
+      DataSourceName: NONE
+      PipelineConfig:
+        Functions:
+          - !GetAtt LambdaFunctionGetItem.Arn
+          - !GetAtt LambdaFunctionAddItem.Arn
+
   # Lambda関数の実態(AddItem)
   LambdaFunctionAddItem:
     Type: 'AWS::Serverless::Function'
@@ -116,30 +155,6 @@ Resources:
         }
       ResponseMappingTemplate: |
         $util.toJson($ctx.result)
-
-  # スキーマ定義
-  SchemaMyApp:
-    Type: AWS::AppSync::GraphQLSchema
-    Properties:
-      ApiId: !GetAtt AppSyncApi.ApiId
-      Definition: >
-        schema {
-          query: Query
-          mutation: Mutation
-        }
-
-        type Query {
-          getItem(id: ID!): Item
-        }
-
-        type Mutation {
-          addItem(hogetext: String!): Item
-        }
-
-        type Item {
-          id: ID!
-          hogetext: String
-        }
 
   # DynamoDBのテーブルとLambda関数にアクセスするためのロール作成
   AppSyncDynamoDBRole:
