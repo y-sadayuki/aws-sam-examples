@@ -2,8 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
 
 #テンプレートの説明
-Description: |
-  apigateway-lambda-sample
+Description: "apigateway-lambda-sample"
 
 #共通パラメータ
 Globals:
@@ -44,49 +43,85 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-  # Lambda関数の実態
-  LambdaFunction:
+  # Lambda関数の実態(GetItem)
+  LambdaFunctionGetItem:
     Type: 'AWS::Serverless::Function'
     Properties:
-      FunctionName: 'MyPipelineLambda'
+      FunctionName: 'LambdaGetItem'
       CodeUri: ./src
-      Handler: hello_world.handler
+      Handler: getItem.lambda_handler
 
-  # Lambda関数を呼び出すためのデータソース
-  DataSourceLambda:
+  # Lambda用データソース(GetItem)
+  DataSourceLambdaGetItem:
     Type: 'AWS::AppSync::DataSource'
     Properties:
       ApiId: !GetAtt AppSyncApi.ApiId
-      Name: 'DataSourceLambda'
+      Name: 'DataSourceLambdGetItem'
       Type: AWS_LAMBDA
       ServiceRoleArn: !GetAtt AppSyncDynamoDBRole.Arn
       LambdaConfig:
-        LambdaFunctionArn: !GetAtt LambdaFunction.Arn
+        LambdaFunctionArn: !GetAtt LambdaFunctionGetItem.Arn
 
   # getItemに対応したリゾルバ
-  ResolverHelloWorld:
+  ResolverGetItem:
     Type: 'AWS::AppSync::Resolver'
     DependsOn: SchemaMyApp
     Properties:
       ApiId: !GetAtt AppSyncApi.ApiId
-      DataSourceName: !GetAtt DataSourceLambda.Name
+      DataSourceName: !GetAtt DataSourceLambdaGetItem.Name
       TypeName: Query
       FieldName: getItem
       RequestMappingTemplate: |
         {
-          "version": "2018-05-29",
-          "payload": {}
+          "version": "2017-02-28",
+          "operation": "Invoke",
+          "payload": $util.toJson($ctx.args)
         }
-      ResponseMappingTemplate: '$util.toJson($ctx.result)'
+      ResponseMappingTemplate: |
+        $util.toJson($ctx.result)
+
+  # Lambda関数の実態(AddItem)
+  LambdaFunctionAddItem:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: 'LambdaAddItem'
+      CodeUri: ./src
+      Handler: addItem.lambda_handler
+
+  # Lambda用データソース(AddItem)
+  DataSourceLambdaAddItem:
+    Type: 'AWS::AppSync::DataSource'
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      Name: 'DataSourceLambdAddItem'
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncDynamoDBRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt LambdaFunctionAddItem.Arn
+
+  # addItemに対応したリゾルバ
+  ResolverGetItem:
+    Type: 'AWS::AppSync::Resolver'
+    DependsOn: SchemaMyApp
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      DataSourceName: !GetAtt DataSourceLambdaAddItem.Name
+      TypeName: Mutation
+      FieldName: addItem
+      RequestMappingTemplate: |
+        {
+          "version": "2017-02-28",
+          "operation": "Invoke",
+          "payload": $util.toJson($ctx.args)
+        }
+      ResponseMappingTemplate: |
+        $util.toJson($ctx.result)
 
   # スキーマ定義
   SchemaMyApp:
     Type: AWS::AppSync::GraphQLSchema
     Properties:
-      ApiId:
-        Fn::GetAtt:
-          - AppSyncApi
-          - ApiId
+      ApiId: !GetAtt AppSyncApi.ApiId
       Definition: >
         schema {
           query: Query
@@ -98,7 +133,7 @@ Resources:
         }
 
         type Mutation {
-          addItem(id: ID!, hogetext: String!): Item
+          addItem(hogetext: String!): Item
         }
 
         type Item {
@@ -131,4 +166,5 @@ Resources:
                   - "lambda:*" #本来は権限を絞って指定するべき
                 Resource:
                   - !GetAtt MyDynamoDBTable.Arn
-                  - !GetAtt LambdaFunction.Arn
+                  - !GetAtt LambdaFunctionGetItem.Arn
+                  - !GetAtt LambdaFunctionAddItem.Arn
