@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
+Transform: 'AWS::Serverless-2016-10-31'
 
 #テンプレートの説明
 Description: |
@@ -15,81 +15,120 @@ Globals:
   Api:
     TracingEnabled: true
 
-#リソースの説明
+#リソース設定
 Resources:
-  LambdaDataSource:
-    Type: 'AWS::AppSync::DataSource'
-    Properties:
-      ApiId: !GetAtt AppSyncApi.ApiId
-      Name: 'LambdaDataSource'
-      Type: 'AWS_LAMBDA'
-      LambdaConfig:
-        LambdaFunctionArn: !GetAtt LambdaFunction.Arn
 
-  PipelineResolver:
-    Type: 'AWS::AppSync::Resolver'
-    Properties:
-      ApiId: !GetAtt AppSyncApi.ApiId
-      DataSourceName: !GetAtt LambdaDataSource.Name
-      FieldName: 'pipelineResolver'
-      Kind: 'PIPELINE'
-      PipelineConfig:
-        Functions:
-          - !GetAtt LambdaFunction.Arn
-          - !Ref AnotherResolver # 別のリゾルバを指定
-
-  LambdaFunction:
-    Type: 'AWS::Lambda::Function'
-    Properties:
-      FunctionName: 'MyPipelineLambda'
-      Handler: 'index.handler'
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: 'your-code-bucket'
-        S3Key: 'lambda-code.zip'
-
-  LambdaExecutionRole:
-    Type: 'AWS::IAM::Role'
-    Properties:
-      RoleName: 'LambdaExecutionRole'
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: 'Allow'
-            Principal:
-              Service: 'lambda.amazonaws.com'
-            Action: 'sts:AssumeRole'
-      Policies:
-        - PolicyName: 'LambdaExecutionPolicy'
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: 'Allow'
-                Action:
-                  - 'logs:CreateLogGroup'
-                  - 'logs:CreateLogStream'
-                  - 'logs:PutLogEvents'
-                Resource: 'arn:aws:logs:*:*:*'
-
+  #appsyncの定義  
   AppSyncApi:
     Type: 'AWS::AppSync::GraphQLApi'
     Properties:
-      Name: 'MyAppSyncApi'
-      AuthenticationType: 'API_KEY'
-
-  AnotherResolver:
-    Type: 'AWS::AppSync::Resolver'
+      Name: 'AppSync Sam Template Test'
+      AuthenticationType: API_KEY
+  
+  #API-KEYの定義
+  ApiKeyAppSync:
+    Type: AWS::AppSync::ApiKey
     Properties:
       ApiId: !GetAtt AppSyncApi.ApiId
-      TypeName: 'Query'
-      FieldName: 'anotherResolver'
-      DataSourceName: 'AnotherDataSource'
-      RequestMappingTemplate: '{ "version": "2018-05-29", "payload": {} }'
-      ResponseMappingTemplate: '$util.toJson($ctx.result)'
 
-  AnotherDataSource:
+  # DynamoDBのテーブルを作成
+  MyDynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MyDynamoDBTable
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # Lambda関数の実態
+  LambdaFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: 'MyPipelineLambda'
+      CodeUri: ./src
+      Handler: hello_world.handler
+
+  # Lambda関数を呼び出すためのデータソース
+  DataSourceLambda:
     Type: 'AWS::AppSync::DataSource'
     Properties:
       ApiId: !GetAtt AppSyncApi.ApiId
-      Name: 'AnotherDataSource'
-      Type: 'NONE' # 他のデータソースとの結合などを想定
+      Name: 'DataSourceLambda'
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncDynamoDBRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt LambdaFunction.Arn
+
+  # getItemに対応したリゾルバ
+  ResolverHelloWorld:
+    Type: 'AWS::AppSync::Resolver'
+    DependsOn: SchemaMyApp
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      DataSourceName: !GetAtt DataSourceLambda.Name
+      TypeName: Query
+      FieldName: getItem
+      RequestMappingTemplate: |
+        {
+          "version": "2018-05-29",
+          "payload": {}
+        }
+      ResponseMappingTemplate: '$util.toJson($ctx.result)'
+
+  # スキーマ定義
+  SchemaMyApp:
+    Type: AWS::AppSync::GraphQLSchema
+    Properties:
+      ApiId:
+        Fn::GetAtt:
+          - AppSyncApi
+          - ApiId
+      Definition: >
+        schema {
+          query: Query
+          mutation: Mutation
+        }
+
+        type Query {
+          getItem(id: ID!): Item
+        }
+
+        type Mutation {
+          addItem(id: ID!, hogetext: String!): Item
+        }
+
+        type Item {
+          id: ID!
+          hogetext: String
+        }
+
+  # DynamoDBのテーブルとLambda関数にアクセスするためのロール作成
+  AppSyncDynamoDBRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AppSyncDynamoDBRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - "appsync.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - PolicyName: AppSyncDynamoDBAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "dynamodb:*" #本来は権限を絞って指定するべき
+                  - "lambda:*" #本来は権限を絞って指定するべき
+                Resource:
+                  - !GetAtt MyDynamoDBTable.Arn
+                  - !GetAtt LambdaFunction.Arn

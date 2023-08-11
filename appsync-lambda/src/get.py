@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 dynamodb = boto3.resource('dynamodb')
 table_name = os.environ['DynamDbTestTable']
- 
+
 
 #ランダムで5分の区間を返す
 def random_date(start_date, end_date):
