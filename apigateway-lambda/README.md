@@ -1,2 +1,2 @@
-# api-gateway + lambda(IP認証あり)のテンプレート
+# api-gateway + lambda + apikey認証のテンプレート
 

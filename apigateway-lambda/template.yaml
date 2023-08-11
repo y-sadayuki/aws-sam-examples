@@ -1,54 +1,85 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
-Description: |
-  apigateway-lambda-sample
+#テンプレートの説明
+Description: apigateway-lambda-sample
 
 #共通パラメータ
 Globals:
   Function:
-    Runtime: python3.9
-    MemorySize: 512
-    Timeout: 10
     Tracing: Active
+    MemorySize: 512
+    Timeout: 30
   Api:
     TracingEnabled: true
-
-#リソース定義   
+    
 Resources:
 
   #api gatewayの定義
-  InputApi:
+  ApiDynamoTest:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
       EndpointConfiguration: REGIONAL
+      Auth:
+        ApiKeyRequired: true # sets for all methods
 
   #lambdaの定義 
-  InputFunction:
+  LambdaFuntionGet:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: ./src
-      Handler: input-test.lambda_handler
+      Handler: hello.lambda_handler
       Runtime: python3.9
-      
-      MemorySize: 512
-      Timeout: 300
 
       Events:
         InputFunctionEvent:
           Type: Api
           Properties:
-            Path: /input
+            Path: /get
             Method: GET
-            RestApiId: !Ref InputApi
+            RestApiId: !Ref ApiDynamoTest
 
-      #IP制限
-      Environment:
-        Variables:
-          ALLOWED_IPS: "192.168.1.1,xxx.xxx.xxx.xxx"
+  ApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    Properties: 
+      Enabled: true
+      Name: !Sub 'api-key'
+      StageKeys: 
+        - RestApiId: !Ref ApiDynamoTest
+          StageName: Prod
+
+  ApiUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn:
+      - ApiKey
+    Properties:
+      ApiStages:
+          - ApiId: !Ref ApiDynamoTest
+            Stage: Prod
+      Throttle:
+        BurstLimit: 200
+        RateLimit: 100
+      UsagePlanName: !Sub 'api-plan'
+
+  ApiUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    DependsOn:
+      - ApiUsagePlan
+      - LambdaFuntionGet
+    Properties : 
+      KeyId: !Ref ApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref ApiUsagePlan
+
 
 Outputs:
-  InputApiEndpoint:
+  GetApiEndpoint:
     Description: API Gateway Endpoint URL
-    Value: !Sub "https://${InputApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/input"
+    Value: !Sub "https://${ApiDynamoTest}.execute-api.${AWS::Region}.amazonaws.com/Prod/get"
+
+  MyApiKeyOutput:
+    Description: API Key information
+    Value: !Ref ApiKey
+    Export:
+      Name: ApiKey
