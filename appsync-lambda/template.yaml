@@ -43,7 +43,6 @@ Resources:
 
         type Query {
           getItem(id: ID!): Item
-          transformItem(id: ID!): Item
         }
 
         type Mutation {
@@ -106,19 +105,6 @@ Resources:
       ResponseMappingTemplate: |
         $util.toJson($ctx.result)
 
-  MyPipelineResolver:
-    Type: 'AWS::AppSync::Resolver'
-    Properties:
-      ApiId: !GetAtt AppSyncApi.ApiId
-      TypeName: Query
-      FieldName: transformItem
-      Kind: PIPELINE
-      DataSourceName: NONE
-      PipelineConfig:
-        Functions:
-          - !GetAtt LambdaFunctionGetItem.Arn
-          - !GetAtt LambdaFunctionAddItem.Arn
-
   # Lambda関数の実態(AddItem)
   LambdaFunctionAddItem:
     Type: 'AWS::Serverless::Function'
@@ -139,7 +125,7 @@ Resources:
         LambdaFunctionArn: !GetAtt LambdaFunctionAddItem.Arn
 
   # addItemに対応したリゾルバ
-  ResolverGetItem:
+  ResolverAddItem:
     Type: 'AWS::AppSync::Resolver'
     DependsOn: SchemaMyApp
     Properties:
