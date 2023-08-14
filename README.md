@@ -35,3 +35,11 @@ curlでデプロイされたエンドポイントにアクセスすれば"Hello 
 
 hello world
 </pre>
+
+
+・AWS Serverless Application Modelのドキュメント<br>
+https://docs.aws.amazon.com/ja_jp/serverless-application-model/latest/developerguide/what-is-concepts.html
+
+・
+'ReadMe自動生成
+https://murasan-net.com/index.php/2023/03/24/gpt-4-github-readme-md/

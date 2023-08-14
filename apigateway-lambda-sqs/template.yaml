@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+#テンプレートの説明
+Description: apigateway-lambda-sqs-sample
+
+#共通パラメータ
+Globals:
+  Function:
+    Tracing: Active
+    MemorySize: 512
+    Timeout: 30
+  Api:
+    TracingEnabled: true
+    
+Resources:
+
+  #api gatewayの定義
+  ApiSqsTest:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      EndpointConfiguration: REGIONAL
+      Auth:
+        ApiKeyRequired: true
+        UsagePlan:
+          CreateUsagePlan: PER_API
+          UsagePlanName: MyUsagePlan
+          Quota:
+            Limit: 10000
+            Period: MONTH
+          Throttle:
+            BurstLimit: 100
+            RateLimit: 100
+
+  #SQSの定義
+  SQSMessage:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      QueueName: SQSMessage
+
+  #lambdaの定義(SQSにメッセージを送る) 
+  LambdaFuntionPush:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src
+      Handler: sqs-push.lambda_handler
+      Runtime: python3.9
+
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt SQSMessage.QueueName
+
+      Environment:
+        Variables:
+          SQS_QUEUE_URL: !GetAtt SQSMessage.QueueUrl
+
+      Events:
+        InputFunctionEvent:
+          Type: Api
+          Properties:
+            Path: /push
+            Method: POST
+            RestApiId: !Ref ApiSqsTest
+
+  #lambdaの定義(SQSからメッセージで実行される) 
+  LambdaFuntionPop:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src
+      Handler: sqs-pop.lambda_handler
+      Runtime: python3.9
+
+      Policies:
+        - SQSPollerPolicy:
+            QueueName: !GetAtt SQSMessage.QueueName
+
+      Environment:
+        Variables:
+          SQS_QUEUE_URL: !GetAtt SQSMessage.QueueUrl
+
+      Events:
+        MySQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt SQSMessage.Arn
+
+
+Outputs:
+  PushApiEndpoint:
+    Description: API Gateway Endpoint URL
+    Value: !Sub "https://${ApiSqsTest}.execute-api.${AWS::Region}.amazonaws.com/Prod/push"
+
+  SQSQueueURL:
+    Description: URL of the SQS queue
+    Value: !GetAtt SQSMessage.QueueUrl
