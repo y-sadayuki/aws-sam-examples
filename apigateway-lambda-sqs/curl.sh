@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # API_KEY is the API key generated in the API Gateway console
-API_KEY="t42X1MJ2Zv3coOSzaNK9q3Vw9isjogHf6kX3Uhefa"
+API_KEY="t42X1MJ2Zv3coOSzaNK9q3Vw9isjogHf6kX3Uhef"
 API_ENDPOINT="https://dga3ciz6n6.execute-api.ap-northeast-1.amazonaws.com/Prod/push"
 
 DATA='{"key1": "value1", "key2": "value2"}'

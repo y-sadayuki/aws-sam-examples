@@ -1,0 +1,175 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+
+#テンプレートの説明
+Description: "apigateway-lambda-sample"
+
+#共通パラメータ
+Globals:
+  Function:
+    Runtime: python3.9
+    MemorySize: 512
+    Timeout: 10
+    Tracing: Active
+  Api:
+    TracingEnabled: true
+
+#リソース設定
+Resources:
+
+  # DynamoDBのテーブルを作成
+  MyDynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MyDynamoDBTable
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  #appsyncの定義  
+  AppSyncApi:
+    Type: 'AWS::AppSync::GraphQLApi'
+    Properties:
+      Name: 'AppSync Sam Template Test'
+      AuthenticationType: API_KEY
+
+  #API-KEYの定義
+  ApiKeyAppSync:
+    Type: AWS::AppSync::ApiKey
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+
+  # スキーマ定義
+  SchemaMyApp:
+    Type: AWS::AppSync::GraphQLSchema
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      Definition: >
+        schema {
+          query: Query
+          mutation: Mutation
+          subscription: Subscription
+        }
+
+        type Message {
+          id: ID!
+          text: String
+        }
+
+        type Query {
+          getItem(id: ID!): Message
+        }
+
+        type Mutation {
+          addItem(text: String!): Message
+        }
+
+        type Subscription {
+          onGetItem: Message @aws_subscribe(mutations: ["addItem"])
+        }
+
+  # Lambda関数の実態(GetItem)
+  LambdaFunctionGetItem:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: 'LambdaGetItem'
+      CodeUri: ./src
+      Handler: getItem.lambda_handler
+
+  # Lambda用データソース(GetItem)
+  DataSourceLambdaGetItem:
+    Type: 'AWS::AppSync::DataSource'
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      Name: 'DataSourceLambdGetItem'
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncDynamoDBRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt LambdaFunctionGetItem.Arn
+
+  # getItemに対応したリゾルバ
+  ResolverGetItem:
+    Type: 'AWS::AppSync::Resolver'
+    DependsOn: SchemaMyApp
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      DataSourceName: !GetAtt DataSourceLambdaGetItem.Name
+      TypeName: Query
+      FieldName: getItem
+      RequestMappingTemplate: |
+        {
+          "version": "2017-02-28",
+          "operation": "Invoke",
+          "payload": $util.toJson($ctx.args)
+        }
+      ResponseMappingTemplate: |
+        $util.toJson($ctx.result)
+
+  # Lambda関数の実態(AddItem)
+  LambdaFunctionAddItem:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: 'LambdaAddItem'
+      CodeUri: ./src
+      Handler: addItem.lambda_handler
+
+  # Lambda用データソース(AddItem)
+  DataSourceLambdaAddItem:
+    Type: 'AWS::AppSync::DataSource'
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      Name: 'DataSourceLambdAddItem'
+      Type: AWS_LAMBDA
+      ServiceRoleArn: !GetAtt AppSyncDynamoDBRole.Arn
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt LambdaFunctionAddItem.Arn
+
+  # addItemに対応したリゾルバ
+  ResolverAddItem:
+    Type: 'AWS::AppSync::Resolver'
+    DependsOn: SchemaMyApp
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      DataSourceName: !GetAtt DataSourceLambdaAddItem.Name
+      TypeName: Mutation
+      FieldName: addItem
+      RequestMappingTemplate: |
+        {
+          "version": "2017-02-28",
+          "operation": "Invoke",
+          "payload": $util.toJson($ctx.args)
+        }
+      ResponseMappingTemplate: |
+        $util.toJson($ctx.result)
+
+  # DynamoDBのテーブルとLambda関数にアクセスするためのロール作成
+  AppSyncDynamoDBRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AppSyncDynamoDBRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - "appsync.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - PolicyName: AppSyncDynamoDBAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "dynamodb:*" #本来は権限を絞って指定するべき
+                  - "lambda:*" #本来は権限を絞って指定するべき
+                Resource:
+                  - !GetAtt MyDynamoDBTable.Arn
+                  - !GetAtt LambdaFunctionGetItem.Arn
+                  - !GetAtt LambdaFunctionAddItem.Arn

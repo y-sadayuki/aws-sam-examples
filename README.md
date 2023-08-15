@@ -43,3 +43,6 @@ https://docs.aws.amazon.com/ja_jp/serverless-application-model/latest/developerg
 ・
 'ReadMe自動生成
 https://murasan-net.com/index.php/2023/03/24/gpt-4-github-readme-md/
+
+・appsync確認
+aws appsync get-graphql-api --api-id 2bshnius4nhwhli2ivwqxeaata
