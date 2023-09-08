@@ -43,4 +43,4 @@ if __name__ == '__main__':
     execute_mutation_api(c)
 
     # 登録した情報を取得する
-    #execute_query_api(c)
+    execute_query_api(c)
